@@ -33,13 +33,13 @@ export class SignLanguageDetector {
 
       this.model.compile({
         optimizer: 'adam',
-        loss: 'sparseCategoricalCrossentropy',
+        loss: 'categoricalCrossentropy',
         metrics: ['accuracy']
       });
 
       // Train with simple synthetic data
       const trainX = tf.randomNormal([100, 42]);
-      const trainY = tf.randomUniform([100], 0, 2, 'int32');
+      const trainY = tf.randomUniform([100], 0, 2, 'float32');
       
       await this.model.fit(trainX, trainY, {
         epochs: 5,
@@ -152,6 +152,7 @@ export class SignLanguageDetector {
 
       if (skinRatio < 0.005) {
         console.log('❌ Not enough skin pixels detected');
+      }
       const avgG = totalG / pixelCount;
       const avgB = totalB / pixelCount;
 

@@ -158,28 +158,31 @@ export const SignLanguageProvider: React.FC<{ children: React.ReactNode }> = ({ 
         
         // Add to history
         if (result.confidence > 0.4) {
-          gesture: result.gesture,
-          confidence: result.confidence,
-          timestamp: Date.now()
-        };
+          const newPrediction = {
+            gesture: result.gesture,
+            confidence: result.confidence,
+            timestamp: Date.now()
+          };
         
-        setPredictionHistory(prev => {
-          // Avoid duplicates within 1 second
-          const lastPrediction = prev[prev.length - 1];
-          if (lastPrediction && 
-              lastPrediction.gesture === newPrediction.gesture && 
-              newPrediction.timestamp - lastPrediction.timestamp < 1000) {
-            return prev;
-          }
-          
-          // Keep only last 50 predictions
-          const updated = [...prev, newPrediction];
+          setPredictionHistory(prev => {
+            // Avoid duplicates within 1 second
+            const lastPrediction = prev[prev.length - 1];
+            if (lastPrediction && 
+                lastPrediction.gesture === newPrediction.gesture && 
                 newPrediction.timestamp - lastPrediction.timestamp < 1000) {
-        });
+              return prev;
+            }
+            
+            // Keep only last 50 predictions
+            const updated = [...prev, newPrediction];
+            return updated.slice(-50);
+          });
+        }
+      } else {
         if (result) {
           console.log(`❌ Low confidence: ${result.gesture} (${(result.confidence * 100).toFixed(1)}%)`);
         }
-      } else {
+        
         // Gradual confidence reduction
         setConfidence(prev => Math.max(0, prev * 0.9));
         
