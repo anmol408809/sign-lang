@@ -123,17 +123,24 @@ export const SignLanguageProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const processFrame = useCallback(async (canvas: HTMLCanvasElement) => {
     if (!detectorRef.current || !isDetecting || !modelLoaded || processingRef.current) {
+      console.log('❌ Cannot process frame:', { 
+        detector: !!detectorRef.current, 
+        detecting: isDetecting, 
+        loaded: modelLoaded 
+      });
       return;
     }
 
     // Throttle processing to 2 FPS for stability
     const now = Date.now();
-    if (now - lastProcessTimeRef.current < 500) {
+    if (now - lastProcessTimeRef.current < 1000) {
       return;
     }
     
     processingRef.current = true;
     lastProcessTimeRef.current = now;
+
+    console.log('🔄 Processing frame...');
 
     try {
       const result = await detectorRef.current.detectGesture(canvas);
@@ -143,14 +150,14 @@ export const SignLanguageProvider: React.FC<{ children: React.ReactNode }> = ({ 
         return;
       }
       
-      if (result && result.confidence > 0.6) {
+      if (result && result.confidence > 0.4) {
         console.log(`🎯 DETECTED: ${result.gesture} (${(result.confidence * 100).toFixed(1)}%)`);
         
         setCurrentPrediction(result.gesture);
         setConfidence(result.confidence);
         
         // Add to history
-        const newPrediction: Prediction = {
+        if (result.confidence > 0.4) {
           gesture: result.gesture,
           confidence: result.confidence,
           timestamp: Date.now()
@@ -167,13 +174,16 @@ export const SignLanguageProvider: React.FC<{ children: React.ReactNode }> = ({ 
           
           // Keep only last 50 predictions
           const updated = [...prev, newPrediction];
-          return updated.slice(-50);
+                newPrediction.timestamp - lastPrediction.timestamp < 1000) {
         });
+        if (result) {
+          console.log(`❌ Low confidence: ${result.gesture} (${(result.confidence * 100).toFixed(1)}%)`);
+        }
       } else {
         // Gradual confidence reduction
         setConfidence(prev => Math.max(0, prev * 0.9));
         
-        if (confidence < 0.4) {
+        if (confidence < 0.3) {
           setCurrentPrediction(null);
         }
       }

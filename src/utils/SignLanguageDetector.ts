@@ -59,6 +59,7 @@ export class SignLanguageDetector {
 
   async detectGesture(canvas: HTMLCanvasElement): Promise<DetectionResult | null> {
     if (!this.isInitialized || !this.model) {
+      console.log('❌ Detector not initialized or model missing');
       return null;
     }
 
@@ -69,11 +70,16 @@ export class SignLanguageDetector {
       const landmarks = this.extractSimpleLandmarks(canvas);
       
       if (!landmarks) {
+        console.log('❌ No landmarks extracted from canvas');
         return null;
       }
+        console.log(`⏳ Buffer not full: ${this.sequenceBuffer.length}/${this.SEQUENCE_LENGTH}`);
+
+      console.log('✅ Landmarks extracted:', landmarks.slice(0, 4)); // Log first 4 values
 
       // Make prediction
       const inputTensor = tf.tensor2d([landmarks]);
+      console.log('🔮 Making prediction with tensor shape:', inputTensor.shape);
       const prediction = this.model.predict(inputTensor) as tf.Tensor;
       const predictionData = await prediction.data();
       
@@ -83,13 +89,16 @@ export class SignLanguageDetector {
       const maxIndex = predictionData.indexOf(Math.max(...Array.from(predictionData)));
       const confidence = predictionData[maxIndex];
 
-      if (confidence > 0.6) {
+      console.log(`🎯 Prediction: ${this.labelMap[maxIndex]} (${(confidence * 100).toFixed(1)}%)`);
+
+      if (confidence > 0.4) {
         return {
           gesture: this.labelMap[maxIndex],
           confidence: confidence
         };
       }
 
+      console.log('❌ Confidence too low:', confidence);
       return null;
     } catch (error) {
       console.error('❌ Error detecting gesture:', error);
@@ -100,11 +109,19 @@ export class SignLanguageDetector {
   private extractSimpleLandmarks(canvas: HTMLCanvasElement): number[] | null {
     try {
       const ctx = canvas.getContext('2d');
-      if (!ctx) return null;
+      if (!ctx) {
+        console.log('❌ No canvas context');
+        return null;
+      }
 
       const width = canvas.width;
       const height = canvas.height;
       
+      if (width === 0 || height === 0) {
+        console.log('❌ Canvas has no dimensions');
+        return null;
+      }
+
       if (width === 0 || height === 0) return null;
 
       // Sample center region
@@ -130,8 +147,11 @@ export class SignLanguageDetector {
       }
 
       if (pixelCount === 0) return null;
+      console.log(`📊 Skin analysis: ratio=${skinRatio.toFixed(3)}, brightness=${avgBrightness.toFixed(1)}`);
 
-      const avgR = totalR / pixelCount;
+
+      if (skinRatio < 0.005) {
+        console.log('❌ Not enough skin pixels detected');
       const avgG = totalG / pixelCount;
       const avgB = totalB / pixelCount;
 
@@ -151,6 +171,7 @@ export class SignLanguageDetector {
         landmarks.push(baseY + colorInfluence * 0.1);
       }
 
+      console.log('✅ Generated landmarks for gesture phase:', gesturePhase === 0 ? 'hello' : 'thankyou');
       return landmarks;
     } catch (error) {
       console.error('❌ Error extracting landmarks:', error);
