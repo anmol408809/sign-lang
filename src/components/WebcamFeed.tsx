@@ -12,10 +12,8 @@ const WebcamFeed: React.FC = () => {
     isDetecting, 
     startDetection, 
     stopDetection, 
-    processFrame,
-    currentPrediction,
+    startMediaPipeDetection,
     confidence
-  } = useSignLanguage();
   
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
@@ -23,11 +21,6 @@ const WebcamFeed: React.FC = () => {
 
   // Cleanup function
   const cleanup = useCallback(() => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = undefined;
-    }
-    
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => {
         track.stop();
@@ -70,7 +63,11 @@ const WebcamFeed: React.FC = () => {
         const handleLoadedMetadata = () => {
           console.log('✅ Camera ready');
           setIsLoading(false);
-          setCameraReady(true);
+          
+          // Start MediaPipe detection
+          if (videoRef.current) {
+            startMediaPipeDetection(videoRef.current);
+          }
           
           // Start detection loop after a short delay
           setTimeout(() => {
@@ -88,40 +85,6 @@ const WebcamFeed: React.FC = () => {
     }
   }, [isDetecting, isLoading, cameraReady, stopDetection]);
 
-  // Detection loop
-  const startDetectionLoop = useCallback(() => {
-    const detectFrame = () => {
-      if (!isDetecting || !videoRef.current || !canvasRef.current || !cameraReady) {
-        return;
-      }
-
-      try {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-
-        if (ctx && video.readyState === 4) {
-          canvas.width = video.videoWidth || 640;
-          canvas.height = video.videoHeight || 480;
-
-          // Draw video frame to canvas
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-          // Process frame for detection
-          processFrame(canvas);
-        }
-      } catch (error) {
-        console.error('❌ Error in detectFrame:', error);
-      }
-
-      if (isDetecting && cameraReady) {
-        animationFrameRef.current = requestAnimationFrame(detectFrame);
-      }
-    };
-
-    detectFrame();
-  }, [isDetecting, cameraReady, processFrame]);
-
   // Handle detection state changes
   useEffect(() => {
     if (isDetecting && !cameraReady && !isLoading) {
@@ -129,7 +92,7 @@ const WebcamFeed: React.FC = () => {
     } else if (!isDetecting) {
       cleanup();
     }
-  }, [isDetecting, cameraReady, isLoading, initializeCamera, cleanup]);
+  }, [isDetecting, cameraReady, isLoading, initializeCamera, cleanup, startMediaPipeDetection]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -242,19 +205,14 @@ const WebcamFeed: React.FC = () => {
           autoPlay
           playsInline
           muted
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover" 
           style={{ transform: 'scaleX(-1)' }}
-        />
-        
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full opacity-0"
         />
       </div>
       
       <div className="mt-4 text-center">
         <p className="text-sm text-gray-600">
-          Supported gestures: <span className="font-medium text-primary-600">Hello</span>, <span className="font-medium text-accent-600">Thank You</span>
+          MediaPipe Detection: <span className="font-medium text-primary-600">Hello</span>, <span className="font-medium text-accent-600">Thank You</span>
         </p>
       </div>
     </div>

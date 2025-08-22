@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { SignLanguageDetector } from '../utils/SignLanguageDetector';
+import { SignLanguageDetector, DetectionResult } from '../utils/SignLanguageDetector';
 
 interface Prediction {
   gesture: string;
@@ -16,7 +16,7 @@ interface SignLanguageContextType {
   modelLoadingProgress: number;
   startDetection: () => void;
   stopDetection: () => void;
-  processFrame: (canvas: HTMLCanvasElement) => void;
+  startMediaPipeDetection: (videoElement: HTMLVideoElement) => void;
   clearHistory: () => void;
 }
 
@@ -39,8 +39,7 @@ export const SignLanguageProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [modelLoadingProgress, setModelLoadingProgress] = useState(0);
   
   const detectorRef = useRef<SignLanguageDetector | null>(null);
-  const lastProcessTimeRef = useRef<number>(0);
-  const processingRef = useRef<boolean>(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const initializingRef = useRef<boolean>(false);
 
   // Initialize detector once
@@ -77,7 +76,7 @@ export const SignLanguageProvider: React.FC<{ children: React.ReactNode }> = ({ 
           detectorRef.current = newDetector;
           setModelLoaded(true);
           setModelLoadingProgress(100);
-          console.log('✅ Detector initialized successfully');
+          console.log('✅ Detector with MediaPipe initialized successfully');
         } else {
           newDetector.dispose();
         }
@@ -106,7 +105,7 @@ export const SignLanguageProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const startDetection = useCallback(() => {
     if (modelLoaded && detectorRef.current) {
-      console.log('🎯 Starting detection...');
+      console.log('🎯 Starting MediaPipe detection...');
       setIsDetecting(true);
     } else {
       console.warn('⚠️ Cannot start detection: model not loaded');
@@ -114,87 +113,62 @@ export const SignLanguageProvider: React.FC<{ children: React.ReactNode }> = ({ 
   }, [modelLoaded]);
 
   const stopDetection = useCallback(() => {
-    console.log('⏹️ Stopping detection...');
+    console.log('⏹️ Stopping MediaPipe detection...');
     setIsDetecting(false);
     setCurrentPrediction(null);
     setConfidence(0);
-    processingRef.current = false;
+    
+    if (detectorRef.current) {
+      detectorRef.current.stopDetection();
+    }
   }, []);
 
-  const processFrame = useCallback(async (canvas: HTMLCanvasElement) => {
-    if (!detectorRef.current || !isDetecting || !modelLoaded || processingRef.current) {
+  const startMediaPipeDetection = useCallback((videoElement: HTMLVideoElement) => {
+    if (!detectorRef.current || !isDetecting || !modelLoaded) {
       console.log('❌ Cannot process frame:', { 
         detector: !!detectorRef.current, 
         detecting: isDetecting, 
-        loaded: modelLoaded 
-      });
-      return;
-    }
-
-    // Throttle processing to 2 FPS for stability
-    const now = Date.now();
-    if (now - lastProcessTimeRef.current < 1000) {
-      return;
-    }
+    videoRef.current = videoElement;
     
-    processingRef.current = true;
-    lastProcessTimeRef.current = now;
-
-    console.log('🔄 Processing frame...');
-
-    try {
-      const result = await detectorRef.current.detectGesture(canvas);
-      
-      if (!isDetecting) {
-        processingRef.current = false;
-        return;
-      }
-      
-      if (result && result.confidence > 0.4) {
+    detectorRef.current.startDetection(videoElement, (result: DetectionResult | null) => {
+      if (result && result.confidence > 0.6) {
         console.log(`🎯 DETECTED: ${result.gesture} (${(result.confidence * 100).toFixed(1)}%)`);
         
         setCurrentPrediction(result.gesture);
         setConfidence(result.confidence);
         
         // Add to history
-        if (result.confidence > 0.4) {
-          const newPrediction = {
-            gesture: result.gesture,
-            confidence: result.confidence,
-            timestamp: Date.now()
-          };
+        const newPrediction: Prediction = {
+          gesture: result.gesture,
+          confidence: result.confidence,
+          timestamp: Date.now()
+        };
         
-          setPredictionHistory(prev => {
-            // Avoid duplicates within 1 second
-            const lastPrediction = prev[prev.length - 1];
-            if (lastPrediction && 
-                lastPrediction.gesture === newPrediction.gesture && 
-                newPrediction.timestamp - lastPrediction.timestamp < 1000) {
-              return prev;
-            }
-            
-            // Keep only last 50 predictions
-            const updated = [...prev, newPrediction];
-            return updated.slice(-50);
-          });
+        setPredictionHistory(prev => {
+          // Avoid duplicates within 2 seconds
+          const lastPrediction = prev[prev.length - 1];
+          if (lastPrediction && 
+              lastPrediction.gesture === newPrediction.gesture && 
+              newPrediction.timestamp - lastPrediction.timestamp < 2000) {
+            return prev;
+          }
+          
+          // Keep only last 50 predictions
+          const updated = [...prev, newPrediction];
+          return updated.slice(-50);
+        });
+      } else {
+        // Gradual confidence reduction
+        setConfidence(prev => Math.max(0, prev * 0.9));
+        
+        if (confidence < 0.4) {
+          setCurrentPrediction(null);
         }
       } else {
         if (result) {
           console.log(`❌ Low confidence: ${result.gesture} (${(result.confidence * 100).toFixed(1)}%)`);
-        }
-        
-        // Gradual confidence reduction
-        setConfidence(prev => Math.max(0, prev * 0.9));
-        
-        if (confidence < 0.3) {
-          setCurrentPrediction(null);
-        }
       }
-    } catch (error) {
-      console.error('❌ Error processing frame:', error);
-    } finally {
-      processingRef.current = false;
-    }
+    });
   }, [isDetecting, modelLoaded, confidence]);
 
   const clearHistory = useCallback(() => {
@@ -211,7 +185,7 @@ export const SignLanguageProvider: React.FC<{ children: React.ReactNode }> = ({ 
     modelLoadingProgress,
     startDetection,
     stopDetection,
-    processFrame,
+    startMediaPipeDetection,
     clearHistory
   };
 
